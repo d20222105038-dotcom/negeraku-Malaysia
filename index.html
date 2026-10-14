@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Negara Malaysia - Permainan Edutainment Kenegaraan</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font: Poppins for clear readability -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- MediaPipe Hands & Camera Utils CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            user-select: none;
+            overflow: hidden;
+            background-color: #0f172a;
+        }
+        
+        /* Glassmorphism effects */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* Pulse glow animation */
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.6)); }
+            50% { filter: drop-shadow(0 0 22px rgba(234, 179, 8, 0.95)); }
+        }
+
+        .animated-glow {
+            animation: pulse-glow 2s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center relative">
+
+    <!-- Video Element (Hidden webcam feed processed by MediaPipe) -->
+    <video id="webcam" class="hidden" playsinline></video>
+
+    <!-- Main Canvas Frame for rendering Webcam + Overlay UI + Hand tracking -->
+    <div class="relative w-screen h-screen flex items-center justify-center overflow-hidden">
+        <canvas id="gameCanvas" class="w-full h-full object-cover"></canvas>
+
+        <!-- START SCREEN OVERLAY -->
+        <div id="startScreen" class="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/85 p-4">
+            <div class="max-w-2xl w-full glass-panel rounded-3xl p-8 text-center shadow-2xl border-2 border-yellow-400/40">
+                <div class="inline-block p-4 bg-yellow-500/20 rounded-full mb-4 border border-yellow-400/50 animated-glow">
+                    <i class="fa-solid fa-flag-usa text-5xl text-yellow-400 transform -rotate-12"></i>
+                    <i class="fa-solid fa-gift text-5xl text-red-500 transform rotate-12 -ml-3"></i>
+                </div>
+                
+                <h1 class="text-4xl md:text-5xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-red-400 to-blue-400 mb-2">
+                    NEGARA MALAYSIA
+                </h1>
+                <p class="text-lg md:text-xl font-semibold text-blue-200 mb-6">
+                    Pendidikan Khas (Kenegaraan) - Cabaran Kotak Hadiah
+                </p>
+
+                <!-- Instructions -->
+                <div class="bg-slate-800/80 rounded-2xl p-5 mb-8 text-left space-y-3 text-slate-200 text-sm md:text-base border border-slate-700">
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full bg-yellow-500 text-slate-950 font-bold flex items-center justify-center shrink-0">1</span>
+                        <span>Benarkan capaian <b>Kamera Webcam</b> anda.</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full bg-blue-500 text-white font-bold flex items-center justify-center shrink-0">2</span>
+                        <span>Gunakan <b>Jari Telunjuk</b> untuk mengawal kursor kamera.</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center shrink-0">3</span>
+                        <span>Tunjukkan & <b>Tahan Jari Telunjuk (1 Saat)</b> pada Kotak Hadiah <b>YA</b> atau <b>TIDAK</b>.</span>
+                    </div>
+                </div>
+
+                <button id="startBtn" onclick="initGame()" class="w-full py-4 px-8 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xl rounded-2xl shadow-lg transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-3 border-2 border-emerald-300">
+                    <i class="fa-solid fa-play"></i> MULA BERMAIN SEKARANG
+                </button>
+                <p id="loadingText" class="hidden text-yellow-400 font-semibold mt-4 text-center">
+                    <i class="fa-solid fa-spinner animate-spin mr-2"></i> Memuatkan Pengesan Tangan MediaPipe...
+                </p>
+            </div>
+        </div>
+
+        <!-- GAME OVER / HIGH SCORE SCREEN OVERLAY -->
+        <div id="endScreen" class="hidden absolute inset-0 z-30 flex items-center justify-center bg-slate-950/90 p-4">
+            <div class="max-w-xl w-full glass-panel rounded-3xl p-8 text-center shadow-2xl border-2 border-yellow-400/50">
+                <div class="text-6xl mb-3">🏆</div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-yellow-400 mb-2">TAHNIAH! SYABAS!</h2>
+                <p class="text-slate-300 mb-6">Anda telah menyelesaikan semua soalan Kenegaraan!</p>
+
+                <!-- Current Score Card -->
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                        <div class="text-xs text-slate-400 font-bold uppercase">Markah Keseluruhan</div>
+                        <div id="finalScore" class="text-4xl font-black text-emerald-400 mt-1">0</div>
+                    </div>
+                    <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                        <div class="text-xs text-slate-400 font-bold uppercase">Masa Diambil</div>
+                        <div id="finalTime" class="text-4xl font-black text-blue-400 mt-1">0s</div>
+                    </div>
+                </div>
+
+                <!-- Highscores List -->
+                <div class="bg-slate-900/90 rounded-2xl p-4 mb-6 text-left border border-slate-800">
+                    <h3 class="text-sm font-bold text-yellow-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-medal"></i> Rekod Markah Tinggi (Top 5)
+                    </h3>
+                    <div id="highScoresList" class="space-y-2 text-sm text-slate-300">
+                        <!-- High scores rendered dynamically -->
+                    </div>
+                </div>
+
+                <button onclick="restartGame()" class="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-lg rounded-2xl shadow-lg transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> MAIN SEMULA
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Web Audio API Synthesizer for lightweight sound effects
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playHover() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(660, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playCorrect() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.15, now + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.25);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.25);
+                });
+            }
+
+            playWrong() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.linearRampToValueAtTime(110, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+
+            playFanfare() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const chord = [523.25, 659.25, 783.99, 1046.50];
+                chord.forEach(freq => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.8);
+                });
+            }
+        }
+
+        const sfx = new SoundFX();
+
+        // Question Bank for Kenegaraan (True / False)
+        const questionsList = [
+            { question: "Bendera Malaysia dipanggil Jalur Gemilang.", answer: true, hint: "Bendera tanah air kita" },
+            { question: "Jalur Gemilang mempunyai 14 jalur merah dan putih.", answer: true, hint: "14 jalur melambangkan 13 negeri & Wilayah" },
+            { question: "Bunga Kebangsaan Malaysia ialah Bunga Kertas.", answer: false, hint: "Bunga Kebangsaan berwarna merah" },
+            { question: "Ibu negara Malaysia ialah Kuala Lumpur.", answer: true, hint: "Pusat bandar raya utama" },
+            { question: "Lagu Kebangsaan Malaysia bertajuk 'Negaraku'.", answer: true, hint: "Dinyanyikan dengan berdiri tegak" },
+            { question: "Malaysia mempunyai 20 buah negeri semuanya.", answer: false, hint: "Malaysia ada 13 buah negeri" },
+            { question: "Warna kuning pada Jalur Gemilang melambangkan Kesultanan.", answer: true, hint: "Warna diraja" },
+            { question: "Hari Kemerdekaan Malaysia disambut pada 31 Ogos.", answer: true, hint: "Tarikh bersejarah negara" },
+            { question: "Menara Berkembar Petronas (KLCC) terletak di Sabah.", answer: false, hint: "Terletak di Kuala Lumpur" },
+            { question: "Bahasa Melayu ialah Bahasa Kebangsaan negara kita.", answer: true, hint: "Bahasa rasmi Malaysia" }
+        ];
+
+        // Game Engine Variables
+        let canvas, ctx;
+        let webcamElement;
+        let currentQIndex = 0;
+        let score = 0;
+        let gameActive = false;
+        let startTime = 0;
+        let totalElapsedSeconds = 0;
+        let timerInterval = null;
+
+        // Interactive Hand Cursor State
+        let handCursor = { x: -100, y: -100, active: false };
+        let dwellTarget = null; // 'YA' or 'TIDAK'
+        let dwellStartTime = 0;
+        const DWELL_DURATION = 1000; // 1 second hold time requirement
+        let lockSelection = false; // Prevents double triggers
+
+        // Particles for Gift Box Opening Effect
+        let particles = [];
+
+        // Box layout specifications (Small boxes situated in lower corners)
+        let yaBox = { x: 0, y: 0, w: 0, h: 0, type: 'YA' };
+        let tidakBox = { x: 0, y: 0, w: 0, h: 0, type: 'TIDAK' };
+
+        // Gift Lid Offset Animation
+        let yaLidOffset = 0;
+        let tidakLidOffset = 0;
+
+        window.onload = () => {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            webcamElement = document.getElementById('webcam');
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            loadHighScores();
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            calculateBoxPositions();
+        }
+
+        // Calculate Small Answer Boxes Positioned strictly at bottom corners
+        function calculateBoxPositions() {
+            const boxWidth = Math.min(180, canvas.width * 0.18);
+            const boxHeight = Math.min(150, canvas.height * 0.20);
+            const marginX = canvas.width * 0.05;
+            const marginY = canvas.height * 0.08;
+
+            // Bottom-Left Box (YA)
+            yaBox = {
+                x: marginX,
+                y: canvas.height - boxHeight - marginY,
+                w: boxWidth,
+                h: boxHeight,
+                type: 'YA'
+            };
+
+            // Bottom-Right Box (TIDAK)
+            tidakBox = {
+                x: canvas.width - boxWidth - marginX,
+                y: canvas.height - boxHeight - marginY,
+                w: boxWidth,
+                h: boxHeight,
+                type: 'TIDAK'
+            };
+        }
+
+        async function initGame() {
+            sfx.init();
+            document.getElementById('startBtn').classList.add('hidden');
+            document.getElementById('loadingText').classList.remove('hidden');
+
+            try {
+                // Initialize MediaPipe Hands
+                const hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.65,
+                    minTrackingConfidence: 0.65
+                });
+
+                hands.onResults(onHandResults);
+
+                // Initialize Camera
+                const camera = new Camera(webcamElement, {
+                    onFrame: async () => {
+                        await hands.send({ image: webcamElement });
+                    },
+                    width: 1280,
+                    height: 720
+                });
+
+                await camera.start();
+
+                // Hide start overlay and start game session
+                document.getElementById('startScreen').classList.add('hidden');
+                resetGameSession();
+                requestAnimationFrame(renderLoop);
+
+            } catch (err) {
+                alert("Gagal mengakses kamera webcam. Sila pastikan kebenaran kamera dibenarkan!");
+                console.error(err);
+                document.getElementById('startBtn').classList.remove('hidden');
+                document.getElementById('loadingText').classList.add('hidden');
+            }
+        }
+
+        function resetGameSession() {
+            currentQIndex = 0;
+            score = 0;
+            gameActive = true;
+            startTime = Date.now();
+            totalElapsedSeconds = 0;
+            particles = [];
+            lockSelection = false;
+            
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (gameActive) {
+                    totalElapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                }
+            }, 1000);
+        }
+
+        function onHandResults(results) {
+            if (!gameActive) return;
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                // Index Finger Tip is Landmark 8
+                const indexTip = landmarks[8];
+
+                // Coordinate mapping for accuracy:
+                // Note: The camera image is drawn mirrored on canvas so user feels like looking in a mirror.
+                // To accurately align pointing finger tip with screen coordinates:
+                // Pointing to physical right moves screen x right -> x = (1 - landmark.x) * width
+                handCursor.x = (1 - indexTip.x) * canvas.width;
+                handCursor.y = indexTip.y * canvas.height;
+                handCursor.active = true;
+
+                checkDwellSelection();
+            } else {
+                handCursor.active = false;
+                resetDwell();
+            }
+        }
+
+        function checkDwellSelection() {
+            if (lockSelection) return;
+
+            let hovered = null;
+            if (isPointInsideBox(handCursor, yaBox)) {
+                hovered = 'YA';
+            } else if (isPointInsideBox(handCursor, tidakBox)) {
+                hovered = 'TIDAK';
+            }
+
+            if (hovered) {
+                if (dwellTarget !== hovered) {
+                    dwellTarget = hovered;
+                    dwellStartTime = Date.now();
+                    sfx.playHover();
+                } else {
+                    const elapsed = Date.now() - dwellStartTime;
+                    if (elapsed >= DWELL_DURATION) {
+                        // Dwell Completed! Trigger Answer
+                        processAnswer(hovered === 'YA');
+                        resetDwell();
+                    }
+                }
+            } else {
+                resetDwell();
+            }
+        }
+
+        function resetDwell() {
+            dwellTarget = null;
+            dwellStartTime = 0;
+        }
+
+        function isPointInsideBox(pt, box) {
+            return pt.x >= box.x && pt.x <= box.x + box.w &&
+                   pt.y >= box.y && pt.y <= box.y + box.h;
+        }
+
+        function processAnswer(selectedAnswer) {
+            lockSelection = true;
+            const q = questionsList[currentQIndex];
+            const isCorrect = (selectedAnswer === q.answer);
+
+            if (isCorrect) {
+                sfx.playCorrect();
+                score += 100 + Math.max(0, 50 - totalElapsedSeconds); // Time bonus
+                spawnGiftParticles(selectedAnswer ? yaBox : tidakBox, true);
+                if (selectedAnswer) yaLidOffset = 30; else tidakLidOffset = 30;
+            } else {
+                sfx.playWrong();
+                spawnGiftParticles(selectedAnswer ? yaBox : tidakBox, false);
+            }
+
+            // Transition to next question after animation delay
+            setTimeout(() => {
+                yaLidOffset = 0;
+                tidakLidOffset = 0;
+                currentQIndex++;
+                if (currentQIndex < questionsList.length) {
+                    lockSelection = false;
+                } else {
+                    endGame();
+                }
+            }, 1400);
+        }
+
+        function spawnGiftParticles(box, isSuccess) {
+            const centerX = box.x + box.w / 2;
+            const centerY = box.y + box.h / 2;
+            const count = 35;
+
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 3 + Math.random() * 8;
+                particles.push({
+                    x: centerX,
+                    y: centerY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 2,
+                    radius: 4 + Math.random() * 6,
+                    color: isSuccess ? 
+                        ['#facc15', '#10b981', '#3b82f6', '#f43f5e'][Math.floor(Math.random() * 4)] : 
+                        '#64748b',
+                    alpha: 1,
+                    decay: 0.02 + Math.random() * 0.02
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.15; // Gravity
+                p.alpha -= p.decay;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function renderLoop() {
+            // 1. Clear Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Draw Webcam Feed CLEARLY (Unobscured face view with clean mirror alignment)
+            if (webcamElement.readyState === 4) {
+                ctx.save();
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1); // Natural mirror presentation
+                ctx.drawImage(webcamElement, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
+            }
+
+            // Light dark overlay to boost visual contrast without blurring or obscuring player's face
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (gameActive && currentQIndex < questionsList.length) {
+                // 3. Render Top Question Box
+                drawQuestionBox();
+
+                // 4. Render Small Answer Gift Boxes at Corners
+                drawGiftBox(yaBox, 'YA', '#10b981', yaLidOffset);
+                drawGiftBox(tidakBox, 'TIDAK', '#ef4444', tidakLidOffset);
+
+                // 5. Render Animated Particles
+                updateParticles();
+                drawParticles();
+
+                // 6. Draw Index Finger Tip Pointer & Dwell Ring
+                drawHandCursor();
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        function drawQuestionBox() {
+            const q = questionsList[currentQIndex];
+            const boxW = Math.min(850, canvas.width * 0.9);
+            const boxH = 140;
+            const boxX = (canvas.width - boxW) / 2;
+            const boxY = 25;
+
+            // Glassmorphism Question Panel
+            ctx.save();
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 3;
+            
+            // Rounded Rectangle Box
+            drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 20, true, true);
+
+            // Header Info Bar (Question Number & Timer)
+            ctx.fillStyle = '#facc15';
+            ctx.font = 'bold 16px Poppins';
+            ctx.fillText(`SOALAN ${currentQIndex + 1} / ${questionsList.length}`, boxX + 25, boxY + 35);
+
+            ctx.fillStyle = '#38bdf8';
+            ctx.textAlign = 'right';
+            ctx.fillText(`MASA: ${totalElapsedSeconds}s  |  MARKAH: ${score}`, boxX + boxW - 25, boxY + 35);
+
+            // Question Text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 22px Poppins';
+            ctx.textAlign = 'center';
+            
+            // Text Wrapping for long questions
+            wrapText(ctx, `"${q.question}"`, boxX + boxW / 2, boxY + 82, boxW - 40, 30);
+
+            ctx.restore();
+        }
+
+        function drawGiftBox(box, label, colorHex, lidYOffset) {
+            ctx.save();
+
+            const isHovered = (dwellTarget === label);
+            
+            // Box Body
+            ctx.fillStyle = colorHex;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = isHovered ? 4 : 2;
+            
+            // Hover pulse scale offset
+            const scale = isHovered ? 1.05 : 1.0;
+            const cx = box.x + box.w / 2;
+            const cy = box.y + box.h / 2;
+
+            ctx.translate(cx, cy);
+            ctx.scale(scale, scale);
+            ctx.translate(-cx, -cy);
+
+            // Base Present Container
+            drawRoundedRect(ctx, box.x, box.y + 20, box.w, box.h - 20, 14, true, true);
+
+            // Ribbon Vertical Line
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(box.x + box.w / 2 - 12, box.y + 20, 24, box.h - 20);
+
+            // Gift Lid (Opens up when selected)
+            const lidY = box.y + 10 - lidYOffset;
+            ctx.fillStyle = '#f59e0b';
+            drawRoundedRect(ctx, box.x - 6, lidY, box.w + 12, 22, 8, true, true);
+
+            // Text Label inside Box
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'black 26px Poppins';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 6;
+            ctx.fillText(label, box.x + box.w / 2, box.y + box.h - 22);
+
+            ctx.restore();
+        }
+
+        function drawHandCursor() {
+            if (!handCursor.active) return;
+
+            ctx.save();
+
+            // Main Cursor Circle
+            ctx.beginPath();
+            ctx.arc(handCursor.x, handCursor.y, 14, 0, Math.PI * 2);
+            ctx.fillStyle = '#facc15';
+            ctx.shadowColor = '#facc15';
+            ctx.shadowBlur = 15;
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            // Inner pointer dot
+            ctx.beginPath();
+            ctx.arc(handCursor.x, handCursor.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#0f172a';
+            ctx.fill();
+
+            // Dwell Progress Ring (1 second dwell ring indicator)
+            if (dwellTarget && dwellStartTime > 0) {
+                const elapsed = Date.now() - dwellStartTime;
+                const progress = Math.min(1.0, elapsed / DWELL_DURATION);
+
+                ctx.beginPath();
+                ctx.arc(handCursor.x, handCursor.y, 28, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * progress));
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = '#10b981';
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // Helper: Canvas Rounded Rect
+        function drawRoundedRect(ctx, x, y, width, height, radius, fill, stroke) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            if (fill) ctx.fill();
+            if (stroke) ctx.stroke();
+        }
+
+        // Helper: Multi-line text wrapper
+        function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+            let lines = [];
+
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                let metrics = ctx.measureText(testLine);
+                let testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    lines.push(line);
+                    line = words[n] + ' ';
+                } else {
+                    line = testLine;
+                }
+            }
+            lines.push(line);
+
+            let currentY = y - ((lines.length - 1) * lineHeight) / 2;
+            for (let k = 0; k < lines.length; k++) {
+                ctx.fillText(lines[k], x, currentY);
+                currentY += lineHeight;
+            }
+        }
+
+        function endGame() {
+            gameActive = false;
+            if (timerInterval) clearInterval(timerInterval);
+
+            sfx.playFanfare();
+
+            saveHighScore(score, totalElapsedSeconds);
+
+            document.getElementById('finalScore').innerText = score;
+            document.getElementById('finalTime').innerText = `${totalElapsedSeconds}s`;
+            renderHighScores();
+
+            document.getElementById('endScreen').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            document.getElementById('endScreen').classList.add('hidden');
+            resetGameSession();
+        }
+
+        function saveHighScore(newScore, timeTaken) {
+            let scores = JSON.parse(localStorage.getItem('malaysia_edugame_scores') || '[]');
+            const dateStr = new Date().toLocaleDateString('ms-MY');
+            scores.push({ score: newScore, time: timeTaken, date: dateStr });
+            scores.sort((a, b) => b.score - a.score || a.time - b.time);
+            scores = scores.slice(0, 5); // Keep top 5
+            localStorage.setItem('malaysia_edugame_scores', JSON.stringify(scores));
+        }
+
+        function loadHighScores() {
+            renderHighScores();
+        }
+
+        function renderHighScores() {
+            const scores = JSON.parse(localStorage.getItem('malaysia_edugame_scores') || '[]');
+            const container = document.getElementById('highScoresList');
+            
+            if (scores.length === 0) {
+                container.innerHTML = `<div class="text-slate-500 italic">Belum ada rekod. Jadi yang pertama!</div>`;
+                return;
+            }
+
+            container.innerHTML = scores.map((sc, i) => `
+                <div class="flex items-center justify-between bg-slate-800/60 px-3 py-2 rounded-lg border border-slate-700/50">
+                    <div class="flex items-center gap-3">
+                        <span class="font-black text-yellow-400 w-4">#${i + 1}</span>
+                        <span class="font-semibold text-slate-200">${sc.score} Mata</span>
+                    </div>
+                    <div class="text-xs text-slate-400">Masa: ${sc.time}s (${sc.date})</div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
